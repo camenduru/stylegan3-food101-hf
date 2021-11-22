@@ -1,5 +1,5 @@
 ---
-title: Stylegan3 Food101
+title: StyleGAN3 Food101
 emoji: 🦀
 colorFrom: green
 colorTo: yellow
