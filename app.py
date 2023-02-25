@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import functools
 import os
 import pickle
@@ -17,27 +16,11 @@ from huggingface_hub import hf_hub_download
 sys.path.insert(0, 'stylegan3')
 
 TITLE = 'StyleGAN3 Food Image Generation'
-DESCRIPTION = 'Expected execution time on Hugging Face Spaces: 20s'
-ARTICLE = '<center><img src="https://visitor-badge.glitch.me/badge?page_id=hysts.stylegan3-food101" alt="visitor badge"/></center>'
 
 MODEL_REPO = 'hysts/stylegan3-food101-model'
 MODEL_FILE_NAME = '010000.pkl'
 
-TOKEN = os.environ['TOKEN']
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--device', type=str, default='cpu')
-    parser.add_argument('--theme', type=str)
-    parser.add_argument('--live', action='store_true')
-    parser.add_argument('--share', action='store_true')
-    parser.add_argument('--port', type=int)
-    parser.add_argument('--disable-queue',
-                        dest='enable_queue',
-                        action='store_false')
-    parser.add_argument('--allow-flagging', type=str, default='never')
-    return parser.parse_args()
+HF_TOKEN = os.getenv('HF_TOKEN')
 
 
 def make_transform(translate: tuple[float, float], angle: float) -> np.ndarray:
@@ -76,7 +59,9 @@ def generate_image(seed: int, truncation_psi: float, tx: float, ty: float,
 
 
 def load_model(device: torch.device) -> nn.Module:
-    path = hf_hub_download(MODEL_REPO, MODEL_FILE_NAME, use_auth_token=TOKEN)
+    path = hf_hub_download(MODEL_REPO,
+                           MODEL_FILE_NAME,
+                           use_auth_token=HF_TOKEN)
     with open(path, 'rb') as f:
         model = pickle.load(f)
     model.eval()
@@ -88,37 +73,35 @@ def load_model(device: torch.device) -> nn.Module:
     return model
 
 
-def main():
-    args = parse_args()
-    device = torch.device(args.device)
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+model = load_model(device)
+func = functools.partial(generate_image, model=model, device=device)
 
-    model = load_model(device)
-    func = functools.partial(generate_image, model=model, device=device)
-    func = functools.update_wrapper(func, generate_image)
-
-    gr.Interface(
-        func,
-        [
-            gr.inputs.Number(default=1424059097, label='Seed'),
-            gr.inputs.Slider(
-                0, 2, step=0.05, default=0.7, label='Truncation psi'),
-            gr.inputs.Slider(-1, 1, step=0.05, default=0, label='Translate X'),
-            gr.inputs.Slider(-1, 1, step=0.05, default=0, label='Translate Y'),
-            gr.inputs.Slider(-180, 180, step=5, default=0, label='Angle'),
-        ],
-        gr.outputs.Image(type='numpy', label='Output'),
-        title=TITLE,
-        description=DESCRIPTION,
-        article=ARTICLE,
-        theme=args.theme,
-        allow_flagging='never',
-        live=args.live,
-    ).launch(
-        enable_queue=args.enable_queue,
-        server_port=args.port,
-        share=args.share,
-    )
-
-
-if __name__ == '__main__':
-    main()
+gr.Interface(
+    fn=func,
+    inputs=[
+        gr.Slider(label='Seed',
+                  minimum=0,
+                  maximum=10000000000,
+                  step=1,
+                  value=1424059097),
+        gr.Slider(label='Truncation psi',
+                  minimum=0,
+                  maximum=2,
+                  step=0.05,
+                  value=0.7),
+        gr.Slider(label='Translate X',
+                  minimum=-1,
+                  maximum=1,
+                  step=0.05,
+                  value=0),
+        gr.Slider(label='Translate Y',
+                  minimum=-1,
+                  maximum=1,
+                  step=0.05,
+                  value=0),
+        gr.Slider(label='Angle', minimum=-180, maximum=180, step=5, value=0),
+    ],
+    outputs=gr.Image(label='Output', type='numpy'),
+    title=TITLE,
+).queue().launch(show_api=False)
